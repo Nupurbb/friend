@@ -75,6 +75,7 @@ class UserAPI:
                 ''' Get Data '''
                 uid = body.get('uid')
                 if uid is None:
+                    
                     return {'message': f'User ID is missing'}, 400
                 password = body.get('password')
                 
