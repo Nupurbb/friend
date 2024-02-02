@@ -1,67 +1,47 @@
 import json, jwt
 from flask import Blueprint, request, jsonify, current_app, Response
-from flask_restful import Api, Resource # used for REST API building
+from flask_restful import Api, Resource
 from datetime import datetime
 from auth_middleware import token_required
-
 from model.users import User
-
-user_api = Blueprint('user_api', __name__,
-                   url_prefix='/api/users')
-
-# API docs https://flask-restful.readthedocs.io/en/latest/api.html
+user_api = Blueprint('user_api', __name__, url_prefix='/api/users')
 api = Api(user_api)
-
-class UserAPI:        
-    class _CRUD(Resource):  # User API operation for Create, Read.  THe Update, Delete methods need to be implemeented
+class UserAPI:
+    class _CRUD(Resource):
         @token_required
-        def post(self, current_user): # Create method
-            ''' Read data for json body '''
+        def post(self, current_user):
+            ''' Create a new user '''
             body = request.get_json()
-            
-            ''' Avoid garbage in, error checking '''
-            # validate name
             name = body.get('name')
             if name is None or len(name) < 2:
-                return {'message': f'Name is missing, or is less than 2 characters'}, 400
-            # validate uid
+                return {'message': f'Name is missing or less than 2 characters'}, 400
             uid = body.get('uid')
             if uid is None or len(uid) < 2:
-                return {'message': f'User ID is missing, or is less than 2 characters'}, 400
-            # look for password and dob
+                return {'message': f'User ID is missing or less than 2 characters'}, 400
             password = body.get('password')
             dob = body.get('dob')
-
-            ''' #1: Key code block, setup USER OBJECT '''
-            uo = User(name=name, 
-                      uid=uid)
-            
-            ''' Additional garbage error checking '''
-            # set password if provided
+            age = body.get('age')  # New: Extract age
+            ''' Setup User Object '''
+            uo = User(name=name, uid=uid, age=age)  # Include age when creating user object
             if password is not None:
                 uo.set_password(password)
-            # convert to date type
             if dob is not None:
                 try:
                     uo.dob = datetime.strptime(dob, '%Y-%m-%d').date()
                 except:
-                    return {'message': f'Date of birth format error {dob}, must be mm-dd-yyyy'}, 400
-            
-            ''' #2: Key Code block to add user to database '''
-            # create user in database
+                    return {'message': f'Invalid date of birth format: {dob}, must be mm-dd-yyyy'}, 400
+            ''' Add User to Database '''
             user = uo.create()
-            # success returns json of user
             if user:
                 return jsonify(user.read())
-            # failure returns error
-            return {'message': f'Processed {name}, either a format error or User ID {uid} is duplicate'}, 400
-
+            else:
+                return {'message': f'Error processing {name}. Either a format error occurred or User ID {uid} is duplicate'}, 400
         @token_required
-        def get(self, current_user): # Read Method
-            users = User.query.all()    # read/extract all users from database
-            json_ready = [user.read() for user in users]  # prepare output in json
-            return jsonify(json_ready)  # jsonify creates Flask response object, more specific to APIs than json.dumps
-    
+        def get(self, current_user):
+            ''' Retrieve all users '''
+            users = User.query.all()
+            json_ready = [user.read() for user in users]
+            return jsonify(json_ready)
     class _Security(Resource):
         def post(self):
             try:
@@ -72,17 +52,13 @@ class UserAPI:
                         "data": None,
                         "error": "Bad request"
                     }, 400
-                ''' Get Data '''
                 uid = body.get('uid')
                 if uid is None:
-                    
                     return {'message': f'User ID is missing'}, 400
                 password = body.get('password')
-                
-                ''' Find user '''
                 user = User.query.filter_by(_uid=uid).first()
                 if user is None or not user.is_password(password):
-                    return {'message': f"Invalid user id or password"}, 400
+                    return {'message': f"Invalid user ID or password"}, 400
                 if user:
                     try:
                         token = jwt.encode(
@@ -96,9 +72,7 @@ class UserAPI:
                                 secure=True,
                                 httponly=True,
                                 path='/',
-                                samesite='None'  # This is the key part for cross-site requests
-
-                                # domain="frontend.com"
+                                samesite='None'
                                 )
                         return resp
                     except Exception as e:
@@ -117,9 +91,5 @@ class UserAPI:
                         "error": str(e),
                         "data": None
                 }, 500
-
-            
-    # building RESTapi endpoint
     api.add_resource(_CRUD, '/')
     api.add_resource(_Security, '/authenticate')
-    
